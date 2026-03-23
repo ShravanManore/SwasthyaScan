@@ -1,0 +1,40 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Install dependencies",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"install"
+			]
+		},
+		{
+			"label": "Build SwasthyaScan",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"build"
+			]
+		},
+		{
+			"label": "Install dependencies",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"install"
+			]
+		},
+		{
+			"label": "Run dev server",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"dev"
+			],
+			"isBackground": true
+		}
+	]
+}
