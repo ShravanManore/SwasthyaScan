@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { FlaskConical, Upload, FileText, Mic } from 'lucide-react';
+import { FlaskConical, Upload, FileText, Mic, PlayCircle } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import LoadingPulse from '../components/LoadingPulse';
@@ -141,26 +141,27 @@ function PredictionPage() {
         </div>
       </div>
 
-      {/* Input Forms */}
+      {/* Input Forms - Always show all sections for combined mode */}
       <div className="glass-card mb-5 p-5">
-        {selectedMode === 'xray' && (
-          <div>
-            <label className="block text-sm font-medium mb-2">Upload Chest X-ray Image</label>
-            <input
-              type="file"
-              accept="image/*"
-              onChange={handleXrayFileChange}
-              className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100 dark:file:bg-brand-900/50 dark:file:text-brand-300"
-            />
-            {xrayPreview && (
-              <div className="mt-4">
-                <img src={xrayPreview} alt="X-ray preview" className="max-h-64 rounded-lg mx-auto" />
-              </div>
-            )}
-          </div>
-        )}
+        {/* X-ray Upload Section */}
+        <div className="mb-6">
+          <label className="block text-sm font-medium mb-2">Upload Chest X-ray Image (Optional)</label>
+          <input
+            type="file"
+            accept="image/*"
+            onChange={handleXrayFileChange}
+            className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100 dark:file:bg-brand-900/50 dark:file:text-brand-300"
+          />
+          {xrayPreview && (
+            <div className="mt-4">
+              <img src={xrayPreview} alt="X-ray preview" className="max-h-64 rounded-lg mx-auto" />
+            </div>
+          )}
+        </div>
 
-        {selectedMode === 'blood' && (
+        {/* Blood Test Section */}
+        <div className="mb-6">
+          <h3 className="text-lg font-semibold mb-3">Blood Test Parameters (Optional)</h3>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label className="block text-sm font-medium mb-1">WBC Count (cells/μL)</label>
@@ -211,9 +212,11 @@ function PredictionPage() {
               />
             </div>
           </div>
-        )}
+        </div>
 
-        {selectedMode === 'cough' && (
+        {/* Cough Symptoms Section */}
+        <div>
+          <h3 className="text-lg font-semibold mb-3">Cough Symptoms (Optional)</h3>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label className="block text-sm font-medium mb-1">Cough Severity (0-10)</label>
@@ -279,18 +282,18 @@ function PredictionPage() {
               </select>
             </div>
           </div>
-        )}
-
-        <div className="mt-6 flex justify-end">
-          <button
-            type="button"
-            className="btn-primary gap-2"
-            onClick={startPipeline}
-            disabled={running}
-          >
-            <PlayCircle size={16} /> {running ? 'Analyzing...' : 'Start Analysis'}
-          </button>
         </div>
+      </div>
+
+      <div className="mt-6 flex justify-end">
+        <button
+          type="button"
+          className="btn-primary gap-2"
+          onClick={startPipeline}
+          disabled={running}
+        >
+          <PlayCircle size={16} /> {running ? 'Analyzing...' : 'Start Analysis'}
+        </button>
       </div>
 
       {running && <LoadingPulse label="AI is processing your data..." />}
