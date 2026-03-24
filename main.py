@@ -207,13 +207,17 @@ def get_blood_test_prediction(data: dict) -> dict:
     # Predict
     prediction_encoded = blood_model.predict(input_scaled)[0]
     prediction = blood_encoder.inverse_transform([prediction_encoded])[0]
+    
     # Get probabilities
     probs = blood_model.predict_proba(input_scaled)[0]
     confidence = float(np.max(probs)) * 100
     
+    is_tb = prediction == 1 or (isinstance(prediction, str) and "TB" in prediction.upper())
+    risk_level = "High Risk" if is_tb else "Low Risk"
+    
     return {
         "prediction": "TB Positive" if is_tb else "TB Negative",
-        "confidence": round(confidence, 2),
+        "confidence": round(float(confidence), 2),
         "risk_level": risk_level,
         "is_tb": is_tb,
         "success": True,
@@ -239,13 +243,17 @@ def get_cough_prediction(data: dict) -> dict:
     
     # Predict
     prediction = int(cough_model.predict(input_scaled)[0])
+    
     # Get probabilities
     probs = cough_model.predict_proba(input_scaled)[0]
     confidence = float(np.max(probs)) * 100
     
+    is_tb = prediction == 1
+    risk_level = "High Risk" if is_tb else "Low Risk"
+    
     return {
         "prediction": "TB Detected" if is_tb else "No TB Detected",
-        "confidence": round(confidence, 2),
+        "confidence": round(float(confidence), 2),
         "risk_level": risk_level,
         "is_tb": is_tb,
         "success": True,
@@ -368,6 +376,20 @@ def get_combined_prediction(xray_result: dict | None, blood_result: dict | None,
     
     prediction_text = "TB Detected" if final_is_tb else "No TB Detected"
     
+    # Determine methodology text based on available models
+    method_parts = []
+    model_names = []
+    
+    # Re-identify which models were actually used to label weights correctly
+    if xray_result and xray_result.get('success'): model_names.append("X-ray")
+    if blood_result and blood_result.get('success'): model_names.append("Blood")
+    if cough_result and cough_result.get('success'): model_names.append("Cough")
+    
+    for name, weight in zip(model_names, weights):
+        method_parts.append(f"{name}:{weight*100:.0f}%")
+    
+    methodology_text = f"Soft-voting ensemble ({', '.join(method_parts)}) with Sensitivity Boost"
+    
     return {
         "success": True,
         "prediction": prediction_text,
@@ -377,7 +399,7 @@ def get_combined_prediction(xray_result: dict | None, blood_result: dict | None,
         "models_used": len(results),
         "agreement_percentage": round(agreement_percentage, 2),
         "individual_results": results,
-        "methodology": f"Soft-voting ensemble (X-ray:{weights[0]*100 if len(weights)>0 else 0:.0f}%, Blood:{weights[1]*100 if len(weights)>1 else 0:.0f}%, Cough:{weights[2]*100 if len(weights)>2 else 0:.0f}%) with Sensitivity Boost"
+        "methodology": methodology_text
     }
 
 
