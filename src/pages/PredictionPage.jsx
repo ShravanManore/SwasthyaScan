@@ -5,14 +5,14 @@ import { useNavigate } from 'react-router-dom';
 import LoadingPulse from '../components/LoadingPulse';
 import MLPipeline from '../components/MLPipeline';
 import { useToast } from '../components/ToastProvider';
-import { predictFromXray, predictFromBlood, predictFromCough } from '../utils/apiService';
+import { predictFromXray, predictFromBlood, predictFromCough, predictCombined } from '../utils/apiService';
 
 function PredictionPage() {
   const navigate = useNavigate();
   const { showToast } = useToast();
   
-  // Mode selection: 'xray', 'blood', 'cough'
-  const [selectedMode, setSelectedMode] = useState('xray');
+  // Mode selection: 'xray', 'blood', 'cough', 'combined'
+  const [selectedMode, setSelectedMode] = useState('combined');
   const [running, setRunning] = useState(false);
   
   // X-ray state
@@ -45,7 +45,45 @@ function PredictionPage() {
     try {
       let result;
       
-      if (selectedMode === 'xray') {
+      // Combined prediction using all available data
+      if (selectedMode === 'combined') {
+        const combinedParams = {};
+        
+        // Add X-ray if available
+        if (xrayFile) {
+          const base64 = await fileToBase64(xrayFile);
+          combinedParams.xrayImage = base64.split(',')[1]; // Remove data:image/...;base64, prefix
+        }
+        
+        // Add blood test params if available
+        Object.keys(bloodParams).forEach(key => {
+          if (bloodParams[key] !== '') {
+            combinedParams[key] = parseFloat(bloodParams[key]);
+          }
+        });
+        
+        // Add cough symptoms if available
+        Object.keys(coughSymptoms).forEach(key => {
+          if (coughSymptoms[key] !== '') {
+            combinedParams[key] = parseFloat(coughSymptoms[key]);
+          }
+        });
+        
+        // Check if at least one method is provided
+        const hasData = xrayFile || 
+                       Object.values(bloodParams).some(v => v !== '') || 
+                       Object.values(coughSymptoms).some(v => v !== '');
+        
+        if (!hasData) {
+          showToast('Please provide at least one type of data (X-ray, blood test, or symptoms)');
+          setRunning(false);
+          return;
+        }
+        
+        showToast('Running combined AI analysis with all available models...');
+        result = await predictCombined(combinedParams);
+        
+      } else if (selectedMode === 'xray') {
         if (!xrayFile) {
           showToast('Please upload a chest X-ray image');
           setRunning(false);
@@ -124,6 +162,15 @@ function PredictionPage() {
     setCoughSymptoms(prev => ({ ...prev, [name]: value }));
   };
 
+  const fileToBase64 = (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = error => reject(error);
+    });
+  };
+
   return (
     <section className="container-pad py-10">
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mb-6">
@@ -134,7 +181,19 @@ function PredictionPage() {
       </motion.div>
 
       {/* Mode Selection */}
-      <div className="grid gap-4 sm:grid-cols-3 mb-6">
+      <div className="grid gap-4 sm:grid-cols-4 mb-6">
+        <button
+          type="button"
+          className={`glass-card p-4 text-center transition-all ${
+            selectedMode === 'combined' ? 'ring-2 ring-brand-500 bg-brand-50 dark:bg-brand-900/20' : ''
+          }`}
+          onClick={() => setSelectedMode('combined')}
+        >
+          <FlaskConical className="mx-auto mb-2 h-8 w-8" />
+          <h3 className="font-semibold">Combined AI</h3>
+          <p className="text-xs text-slate-500 mt-1">All 3 models (Best)</p>
+        </button>
+        
         <button
           type="button"
           className={`glass-card p-4 text-center transition-all ${
@@ -330,7 +389,11 @@ function PredictionPage() {
         <div className="flex items-center gap-2 font-semibold">
           <FlaskConical size={16} /> AI Analysis Note
         </div>
-        <p className="mt-1">Results are generated using machine learning models. Please consult a healthcare professional for proper diagnosis.</p>
+        <p className="mt-1">
+          {selectedMode === 'combined' 
+            ? 'Combined prediction uses weighted ensemble of all available models for maximum accuracy (X-ray 40% + Blood 35% + Cough 25%).'
+            : 'Results are generated using machine learning models. Please consult a healthcare professional for proper diagnosis.'}
+        </p>
       </div>
     </section>
   );

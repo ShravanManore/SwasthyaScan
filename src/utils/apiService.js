@@ -76,13 +76,38 @@ export async function predictFromCough(symptoms) {
 }
 
 /**
- * Check API health
+ * Get combined prediction from all three models
  */
-export async function checkApiHealth() {
-  try {
-    const response = await fetch(`${API_BASE_URL}/`);
-    return await response.json();
-  } catch (error) {
-    return null;
+export async function predictCombined(params) {
+  const formData = new FormData();
+  
+  // Append X-ray image if provided
+  if (params.xrayImage) {
+    formData.append('xray_image', params.xrayImage);
   }
+  
+  // Append blood test parameters if provided
+  if (params.wbc_count !== undefined) formData.append('wbc_count', params.wbc_count);
+  if (params.hemoglobin !== undefined) formData.append('hemoglobin', params.hemoglobin);
+  if (params.esr !== undefined) formData.append('esr', params.esr);
+  if (params.crp !== undefined) formData.append('crp', params.crp);
+  
+  // Append cough symptoms if provided
+  if (params.cough_severity !== undefined) formData.append('cough_severity', params.cough_severity);
+  if (params.cough_duration !== undefined) formData.append('cough_duration', params.cough_duration);
+  if (params.chest_pain !== undefined) formData.append('chest_pain', params.chest_pain);
+  if (params.breathlessness !== undefined) formData.append('breathlessness', params.breathlessness);
+  if (params.fever !== undefined) formData.append('fever', params.fever);
+
+  const response = await fetch(`${API_BASE_URL}/predict/combined`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Combined prediction failed');
+  }
+
+  return await response.json();
 }

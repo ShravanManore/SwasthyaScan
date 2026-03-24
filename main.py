@@ -488,7 +488,6 @@ async def predict_combined(
                 import base64
                 image_data = base64.b64decode(request.xray_image)
                 xray_result = get_xray_prediction(image_data)
-                xray_result['success'] = True
             except Exception as e:
                 print(f"X-ray prediction failed: {e}")
         
@@ -503,7 +502,6 @@ async def predict_combined(
                     "CRP": request.crp
                 }
                 blood_result = get_blood_test_prediction(blood_data)
-                blood_result['success'] = True
             except Exception as e:
                 print(f"Blood test prediction failed: {e}")
         
@@ -518,7 +516,6 @@ async def predict_combined(
                     "Fever": request.fever or 0
                 }
                 cough_result = get_cough_prediction(cough_data)
-                cough_result['success'] = True
             except Exception as e:
                 print(f"Cough prediction failed: {e}")
         
@@ -540,8 +537,7 @@ async def predict_combined(
             details={
                 "methodology": combined["methodology"],
                 "models_used": combined["models_used"],
-                "agreement_percentage": combined["agreement_percentage"],
-                "individual_results": combined["individual_results"]
+                "agreement_percentage": combined["agreement_percentage"]
             }
         )
     
