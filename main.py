@@ -133,11 +133,25 @@ def get_xray_prediction(image_bytes: bytes) -> dict:
     
     try:
         # Load and preprocess image
-        image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-        print(f"✓ Image loaded: {image.size}, mode: {image.mode}")
+        image_pil = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        print(f"✓ Image loaded: {image_pil.size}, mode: {image_pil.mode}")
         
-        image = image.resize((224, 224))
-        img_array = tf.keras.preprocessing.image.img_to_array(image)
+        # Convert to OpenCV format for CLAHE enhancement
+        open_cv_image = np.array(image_pil) 
+        # Convert RGB to BGR for OpenCV
+        open_cv_image = open_cv_image[:, :, ::-1].copy() 
+        
+        # Apply CLAHE to enhance contrast (helpful for medical images)
+        gray = cv2.cvtColor(open_cv_image, cv2.COLOR_BGR2GRAY)
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+        enhanced_gray = clahe.apply(gray)
+        
+        # Convert back to RGB for the model
+        enhanced_rgb = cv2.cvtColor(enhanced_gray, cv2.COLOR_GRAY2RGB)
+        
+        # Resize and normalize
+        image_resized = cv2.resize(enhanced_rgb, (224, 224))
+        img_array = tf.keras.preprocessing.image.img_to_array(image_resized)
         img_array = tf.expand_dims(img_array, 0) / 255.0  # Normalize
         
         # Predict
@@ -164,7 +178,8 @@ def get_xray_prediction(image_bytes: bytes) -> dict:
             "confidence": round(confidence, 2),
             "risk_level": risk_level,
             "is_tb": is_tb,
-            "success": True
+            "success": True,
+            "probabilities": predictions[0].tolist() # [Normal, TB]
         }
     except Exception as e:
         print(f"✗ X-ray prediction error: {e}")
@@ -192,16 +207,17 @@ def get_blood_test_prediction(data: dict) -> dict:
     # Predict
     prediction_encoded = blood_model.predict(input_scaled)[0]
     prediction = blood_encoder.inverse_transform([prediction_encoded])[0]
-    confidence = float(np.max(blood_model.predict_proba(input_scaled))) * 100
-    
-    is_tb = prediction == 1 or (isinstance(prediction, str) and "TB" in prediction.upper())
-    risk_level = "High Risk" if is_tb else "Low Risk"
+    # Get probabilities
+    probs = blood_model.predict_proba(input_scaled)[0]
+    confidence = float(np.max(probs)) * 100
     
     return {
         "prediction": "TB Positive" if is_tb else "TB Negative",
         "confidence": round(confidence, 2),
         "risk_level": risk_level,
-        "is_tb": is_tb
+        "is_tb": is_tb,
+        "success": True,
+        "probabilities": probs.tolist() # [Negative, Positive]
     }
 
 
@@ -223,16 +239,17 @@ def get_cough_prediction(data: dict) -> dict:
     
     # Predict
     prediction = int(cough_model.predict(input_scaled)[0])
-    confidence = float(np.max(cough_model.predict_proba(input_scaled))) * 100
-    
-    is_tb = prediction == 1
-    risk_level = "High Risk" if is_tb else "Low Risk"
+    # Get probabilities
+    probs = cough_model.predict_proba(input_scaled)[0]
+    confidence = float(np.max(probs)) * 100
     
     return {
         "prediction": "TB Detected" if is_tb else "No TB Detected",
         "confidence": round(confidence, 2),
         "risk_level": risk_level,
-        "is_tb": is_tb
+        "is_tb": is_tb,
+        "success": True,
+        "probabilities": probs.tolist() # [Negative, Positive]
     }
 
 
@@ -299,37 +316,55 @@ def get_combined_prediction(xray_result: dict | None, blood_result: dict | None,
             "error": "No valid predictions to combine"
         }
     
-    # Normalize weights
-    total_weight = sum(weights)
-    weights = [w / total_weight for w in weights]
+    # SOFT VOTING ENSEMBLE
+    # ---------------------
+    # Calculate weighted mean probabilities
+    # X-ray: [Normal (0), TB (1)]
+    # Blood: [Negative (0), Positive (1)]
+    # Cough: [Negative (0), Positive (1)]
     
-    # Calculate weighted confidence for TB vs No TB
-    tb_confidence = 0
-    no_tb_confidence = 0
+    weighted_p0 = 0
+    weighted_p1 = 0
     
     for result, weight in zip(results, weights):
-        is_tb = result.get('is_tb', False)
-        confidence = result.get('confidence', 0) / 100.0  # Convert to 0-1 scale
+        probs = result.get('probabilities', [0.5, 0.5])
+        weighted_p0 += probs[0] * weight
+        weighted_p1 += probs[1] * weight
         
-        if is_tb:
-            tb_confidence += confidence * weight
-        else:
-            no_tb_confidence += confidence * weight
+        # SENSITIVITY BOOST: If any model is extremely confident (>90%) about TB, 
+        # add a significant bonus to the TB probability
+        if result.get('is_tb') and result.get('confidence', 0) > 90:
+            weighted_p1 += 0.15 # Veto power/Bonus
+            
+    # Re-normalize
+    total_p = weighted_p0 + weighted_p1
+    final_p0 = weighted_p0 / total_p
+    final_p1 = weighted_p1 / total_p
     
-    # Determine final prediction
-    final_is_tb = tb_confidence > no_tb_confidence
-    final_confidence = max(tb_confidence, no_tb_confidence) * 100
+    # DECISION THRESHOLD TUNING (Sensitivity focus)
+    # Default is 0.5, but we use a lower threshold to avoid False Negatives
+    TB_THRESHOLD = 0.38 
+    
+    final_is_tb = final_p1 > TB_THRESHOLD
+    final_confidence = (final_p1 if final_is_tb else final_p0) * 100
     
     # Calculate agreement level
     agreement_count = sum(1 for r in results if r.get('is_tb') == final_is_tb)
     agreement_percentage = (agreement_count / len(results)) * 100 if results else 0
     
-    # Determine risk level
-    risk_level = "High Risk" if final_is_tb else "Low Risk"
-    
-    # Adjust risk level based on confidence and agreement
-    if final_confidence < 60 or agreement_percentage < 67:
-        risk_level = "Moderate Risk" if final_is_tb else "Low-Moderate Risk"
+    # Determine risk level with high sensitivity
+    if final_is_tb:
+        if final_p1 > 0.7 or agreement_percentage >= 67:
+            risk_level = "High Risk"
+        else:
+            risk_level = "Moderate Risk"
+    else:
+        if final_p1 > 0.25: # Borderline cases
+            risk_level = "Low-Moderate Risk"
+            prediction_text = "No TB Detected (Monitor Symptoms)"
+        else:
+            risk_level = "Low Risk"
+            prediction_text = "No TB Detected"
     
     prediction_text = "TB Detected" if final_is_tb else "No TB Detected"
     
@@ -342,7 +377,7 @@ def get_combined_prediction(xray_result: dict | None, blood_result: dict | None,
         "models_used": len(results),
         "agreement_percentage": round(agreement_percentage, 2),
         "individual_results": results,
-        "methodology": "Weighted ensemble voting (X-ray: 34%, Blood: 33%, Cough: 33%)"
+        "methodology": f"Soft-voting ensemble (X-ray:{weights[0]*100 if len(weights)>0 else 0:.0f}%, Blood:{weights[1]*100 if len(weights)>1 else 0:.0f}%, Cough:{weights[2]*100 if len(weights)>2 else 0:.0f}%) with Sensitivity Boost"
     }
 
 
