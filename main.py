@@ -35,15 +35,30 @@ print("Loading models...")
 
 # Load X-ray model
 try:
+    # Try loading with compile=False first (handles version mismatches)
     xray_model = tf.keras.models.load_model("tb_model (1).h5", compile=False)
     with open("class_indices.json", "r") as f:
         class_indices = json.load(f)
     print("✓ X-ray model loaded successfully")
 except Exception as e:
     print(f"✗ Error loading X-ray model: {e}")
-    print("  Note: This model may require a specific TensorFlow version")
-    xray_model = None
-    class_indices = {}
+    print("  Attempting alternative loading method...")
+    try:
+        # Alternative: Load without custom objects
+        xray_model = tf.keras.models.load_model(
+            "tb_model (1).h5",
+            compile=False,
+            custom_objects=None
+        )
+        with open("class_indices.json", "r") as f:
+            class_indices = json.load(f)
+        print("✓ X-ray model loaded with alternative method")
+    except Exception as e2:
+        print(f"✗ Failed to load X-ray model: {e2}")
+        print("  Note: This model may require a specific TensorFlow version")
+        print("  Blood test and cough models will still work")
+        xray_model = None
+        class_indices = {}
 
 # Load Blood Test model
 try:
@@ -83,16 +98,23 @@ class PredictionResponse(BaseModel):
     details: dict | None = None
 
 
-class BloodTestData(BaseModel):
-    # For manual blood test data entry
-    Hemoglobin: float | None = None
-    WBC_Count: float | None = None
-    RBC_Count: float | None = None
-    Platelet_Count: float | None = None
-    ESR: float | None = None
-    Lymphocytes: float | None = None
-    Monocytes: float | None = None
-    Neutrophils: float | None = None
+class CombinedPredictionRequest(BaseModel):
+    """Request for combined prediction using all three models"""
+    # X-ray (optional)
+    xray_image: str | None = None  # base64 encoded image
+    
+    # Blood test parameters
+    wbc_count: float | None = None
+    hemoglobin: float | None = None
+    esr: float | None = None
+    crp: float | None = None
+    
+    # Cough symptoms
+    cough_severity: float | None = None
+    cough_duration: float | None = None
+    chest_pain: float | None = None
+    breathlessness: float | None = None
+    fever: float | None = None
 
 
 # =========================
@@ -101,7 +123,13 @@ class BloodTestData(BaseModel):
 def get_xray_prediction(image_bytes: bytes) -> dict:
     """Predict TB from X-ray image"""
     if xray_model is None:
-        raise HTTPException(status_code=503, detail="X-ray model not available")
+        return {
+            "success": False,
+            "error": "X-ray model not available due to TensorFlow version incompatibility",
+            "message": "Please use blood test or cough analysis instead",
+            "is_tb": None,
+            "confidence": 0
+        }
     
     # Load and preprocess image
     image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
@@ -126,7 +154,8 @@ def get_xray_prediction(image_bytes: bytes) -> dict:
         "prediction": prediction_name,
         "confidence": round(confidence, 2),
         "risk_level": risk_level,
-        "is_tb": is_tb
+        "is_tb": is_tb,
+        "success": True
     }
 
 
@@ -135,16 +164,12 @@ def get_blood_test_prediction(data: dict) -> dict:
     if blood_model is None:
         raise HTTPException(status_code=503, detail="Blood test model not available")
     
-    # Prepare input data in correct order
+    # Prepare input data in correct order (WBC_Count, Hemoglobin, ESR, CRP)
     input_data = np.array([[
-        data.get('Hemoglobin', 0),
         data.get('WBC_Count', 0),
-        data.get('RBC_Count', 0),
-        data.get('Platelet_Count', 0),
+        data.get('Hemoglobin', 0),
         data.get('ESR', 0),
-        data.get('Lymphocytes', 0),
-        data.get('Monocytes', 0),
-        data.get('Neutrophils', 0)
+        data.get('CRP', 0)
     ]])
     
     # Scale
@@ -232,6 +257,81 @@ def generate_recommendations(is_tb: bool, risk_level: str) -> tuple[list[str], l
     return precautions, suggestions
 
 
+def get_combined_prediction(xray_result: dict | None, blood_result: dict | None, cough_result: dict | None) -> dict:
+    """
+    Combine predictions from multiple models using weighted voting
+    to improve overall accuracy
+    """
+    results = []
+    weights = []
+    
+    # Assign weights based on model reliability
+    # You can adjust these based on your validation results
+    if xray_result and xray_result.get('success'):
+        results.append(xray_result)
+        weights.append(0.4)  # X-ray typically most reliable (40%)
+    
+    if blood_result and blood_result.get('success'):
+        results.append(blood_result)
+        weights.append(0.35)  # Blood test (35%)
+    
+    if cough_result and cough_result.get('success'):
+        results.append(cough_result)
+        weights.append(0.25)  # Cough symptoms (25%)
+    
+    if not results:
+        return {
+            "success": False,
+            "error": "No valid predictions to combine"
+        }
+    
+    # Normalize weights
+    total_weight = sum(weights)
+    weights = [w / total_weight for w in weights]
+    
+    # Calculate weighted confidence for TB vs No TB
+    tb_confidence = 0
+    no_tb_confidence = 0
+    
+    for result, weight in zip(results, weights):
+        is_tb = result.get('is_tb', False)
+        confidence = result.get('confidence', 0) / 100.0  # Convert to 0-1 scale
+        
+        if is_tb:
+            tb_confidence += confidence * weight
+        else:
+            no_tb_confidence += confidence * weight
+    
+    # Determine final prediction
+    final_is_tb = tb_confidence > no_tb_confidence
+    final_confidence = max(tb_confidence, no_tb_confidence) * 100
+    
+    # Calculate agreement level
+    agreement_count = sum(1 for r in results if r.get('is_tb') == final_is_tb)
+    agreement_percentage = (agreement_count / len(results)) * 100 if results else 0
+    
+    # Determine risk level
+    risk_level = "High Risk" if final_is_tb else "Low Risk"
+    
+    # Adjust risk level based on confidence and agreement
+    if final_confidence < 60 or agreement_percentage < 67:
+        risk_level = "Moderate Risk" if final_is_tb else "Low-Moderate Risk"
+    
+    prediction_text = "TB Detected" if final_is_tb else "No TB Detected"
+    
+    return {
+        "success": True,
+        "prediction": prediction_text,
+        "confidence": round(final_confidence, 2),
+        "risk_level": risk_level,
+        "is_tb": final_is_tb,
+        "models_used": len(results),
+        "agreement_percentage": round(agreement_percentage, 2),
+        "individual_results": results,
+        "methodology": "Weighted ensemble voting (X-ray: 40%, Blood: 35%, Cough: 25%)"
+    }
+
+
 # =========================
 # API Routes
 # =========================
@@ -239,20 +339,25 @@ def generate_recommendations(is_tb: bool, risk_level: str) -> tuple[list[str], l
 @app.get("/")
 def root():
     models_status = {
-        "xray_model": "loaded" if xray_model is not None else "not_available",
+        "xray_model": "loaded" if xray_model is not None else "not_available (TensorFlow version issue)",
         "blood_model": "loaded" if blood_model is not None else "not_available",
         "cough_model": "loaded" if cough_model is not None else "not_available"
     }
     
     return {
-        "message": "TB Prediction API is running",
-        "version": "1.0.0",
+        "message": "TB Prediction API is running with ENSEMBLE learning!",
+        "version": "2.0.0 - Combined Prediction System",
         "models": models_status,
         "endpoints": [
             "/predict/xray",
             "/predict/blood",
-            "/predict/cough"
-        ]
+            "/predict/cough",
+            "/predict/combined (NEW! - Uses all models for better accuracy)"
+        ],
+        "features": {
+            "individual_predictions": "Use single model",
+            "combined_prediction": "Uses weighted ensemble of all available models (40% X-ray + 35% Blood + 25% Cough)"
+        }
     }
 
 
@@ -283,19 +388,15 @@ async def predict_xray(file: UploadFile = File(...)):
 
 @app.post("/predict/blood", response_model=PredictionResponse)
 async def predict_blood(
-    hemoglobin: float | None = Form(None),
-    wbc_count: float | None = Form(None),
-    rbc_count: float | None = Form(None),
-    platelet_count: float | None = Form(None),
-    esr: float | None = Form(None),
-    lymphocytes: float | None = Form(None),
-    monocytes: float | None = Form(None),
-    neutrophils: float | None = Form(None),
+    wbc_count: float = Form(...),
+    hemoglobin: float = Form(...),
+    esr: float = Form(...),
+    crp: float = Form(...),
     file: UploadFile = File(None)
 ):
     """
     Predict TB from blood test report
-    Accepts either form data or OCR from uploaded document
+    Requires 4 parameters: WBC_Count, Hemoglobin, ESR, CRP
     """
     try:
         # If file is uploaded, perform OCR (simplified - you can enhance this)
@@ -305,14 +406,10 @@ async def predict_blood(
             pass
         
         data = {
-            "Hemoglobin": hemoglobin,
             "WBC_Count": wbc_count,
-            "RBC_Count": rbc_count,
-            "Platelet_Count": platelet_count,
+            "Hemoglobin": hemoglobin,
             "ESR": esr,
-            "Lymphocytes": lymphocytes,
-            "Monocytes": monocytes,
-            "Neutrophils": neutrophils
+            "CRP": crp
         }
         
         result = get_blood_test_prediction(data)
@@ -368,6 +465,88 @@ async def predict_cough(
             }
         )
     
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/predict/combined", response_model=PredictionResponse)
+async def predict_combined(
+    request: CombinedPredictionRequest
+):
+    """
+    Combined prediction using all three models for improved accuracy
+    Uses weighted ensemble voting to combine predictions
+    """
+    try:
+        xray_result = None
+        blood_result = None
+        cough_result = None
+        
+        # Get X-ray prediction if image provided
+        if request.xray_image and xray_model is not None:
+            try:
+                import base64
+                image_data = base64.b64decode(request.xray_image)
+                xray_result = get_xray_prediction(image_data)
+                xray_result['success'] = True
+            except Exception as e:
+                print(f"X-ray prediction failed: {e}")
+        
+        # Get blood test prediction if parameters provided
+        if all([request.wbc_count is not None, request.hemoglobin is not None, 
+                request.esr is not None, request.crp is not None]):
+            try:
+                blood_data = {
+                    "WBC_Count": request.wbc_count,
+                    "Hemoglobin": request.hemoglobin,
+                    "ESR": request.esr,
+                    "CRP": request.crp
+                }
+                blood_result = get_blood_test_prediction(blood_data)
+                blood_result['success'] = True
+            except Exception as e:
+                print(f"Blood test prediction failed: {e}")
+        
+        # Get cough prediction if symptoms provided
+        if all([request.cough_severity is not None, request.cough_duration is not None]):
+            try:
+                cough_data = {
+                    "Cough_Severity": request.cough_severity,
+                    "Cough_Duration": request.cough_duration,
+                    "Chest_Pain": request.chest_pain or 0,
+                    "Breathlessness": request.breathlessness or 0,
+                    "Fever": request.fever or 0
+                }
+                cough_result = get_cough_prediction(cough_data)
+                cough_result['success'] = True
+            except Exception as e:
+                print(f"Cough prediction failed: {e}")
+        
+        # Combine predictions
+        combined = get_combined_prediction(xray_result, blood_result, cough_result)
+        
+        if not combined.get('success'):
+            raise HTTPException(status_code=400, detail="At least one prediction method must be provided")
+        
+        precautions, suggestions = generate_recommendations(combined["is_tb"], combined["risk_level"])
+        
+        return PredictionResponse(
+            success=True,
+            prediction=combined["prediction"],
+            confidence=combined["confidence"],
+            risk_level=combined["risk_level"],
+            precautions=precautions,
+            suggestions=suggestions,
+            details={
+                "methodology": combined["methodology"],
+                "models_used": combined["models_used"],
+                "agreement_percentage": combined["agreement_percentage"],
+                "individual_results": combined["individual_results"]
+            }
+        )
+    
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

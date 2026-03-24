@@ -21,14 +21,10 @@ function PredictionPage() {
   
   // Blood test state
   const [bloodParams, setBloodParams] = useState({
-    hemoglobin: '',
     wbc_count: '',
-    rbc_count: '',
-    platelet_count: '',
+    hemoglobin: '',
     esr: '',
-    lymphocytes: '',
-    monocytes: '',
-    neutrophils: ''
+    crp: ''
   });
   
   // Cough symptoms state
@@ -197,22 +193,54 @@ function PredictionPage() {
 
         {selectedMode === 'blood' && (
           <div className="grid gap-4 sm:grid-cols-2">
-            {Object.entries(bloodParams).map(([key, value]) => (
-              <div key={key}>
-                <label className="block text-sm font-medium mb-1 capitalize">
-                  {key.replace('_', ' ')}
-                </label>
-                <input
-                  type="number"
-                  step="any"
-                  name={key}
-                  value={value}
-                  onChange={handleBloodParamChange}
-                  placeholder={`Enter ${key.replace('_', ' ')}`}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg dark:border-slate-600 dark:bg-slate-800"
-                />
-              </div>
-            ))}
+            <div>
+              <label className="block text-sm font-medium mb-1">WBC Count (cells/μL)</label>
+              <input
+                type="number"
+                step="any"
+                name="wbc_count"
+                value={bloodParams.wbc_count}
+                onChange={handleBloodParamChange}
+                placeholder="e.g., 7000"
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg dark:border-slate-600 dark:bg-slate-800"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Hemoglobin (g/dL)</label>
+              <input
+                type="number"
+                step="any"
+                name="hemoglobin"
+                value={bloodParams.hemoglobin}
+                onChange={handleBloodParamChange}
+                placeholder="e.g., 12.5"
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg dark:border-slate-600 dark:bg-slate-800"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">ESR (mm/hr)</label>
+              <input
+                type="number"
+                step="any"
+                name="esr"
+                value={bloodParams.esr}
+                onChange={handleBloodParamChange}
+                placeholder="e.g., 20"
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg dark:border-slate-600 dark:bg-slate-800"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">CRP (mg/L)</label>
+              <input
+                type="number"
+                step="any"
+                name="crp"
+                value={bloodParams.crp}
+                onChange={handleBloodParamChange}
+                placeholder="e.g., 5.0"
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg dark:border-slate-600 dark:bg-slate-800"
+              />
+            </div>
           </div>
         )}
 
