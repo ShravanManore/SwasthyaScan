@@ -1,17 +1,17 @@
 import { motion } from 'framer-motion';
-import { FlaskConical, PlayCircle, Upload, FileText, Mic } from 'lucide-react';
+import { FlaskConical, Upload, FileText, Mic } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import LoadingPulse from '../components/LoadingPulse';
 import MLPipeline from '../components/MLPipeline';
 import { useToast } from '../components/ToastProvider';
-import { predictFromXray, predictFromBlood, predictFromCough, predictCombined } from '../utils/apiService';
+import { predictCombined } from '../utils/apiService';
 
 function PredictionPage() {
   const navigate = useNavigate();
   const { showToast } = useToast();
   
-  // Mode selection: 'xray', 'blood', 'cough', 'combined'
+  // Mode selection: only 'combined' now
   const [selectedMode, setSelectedMode] = useState('combined');
   const [running, setRunning] = useState(false);
   
@@ -43,89 +43,41 @@ function PredictionPage() {
     setPredictionResult(null);
 
     try {
-      let result;
+      const combinedParams = {};
       
-      // Combined prediction using all available data
-      if (selectedMode === 'combined') {
-        const combinedParams = {};
-        
-        // Add X-ray if available
-        if (xrayFile) {
-          const base64 = await fileToBase64(xrayFile);
-          combinedParams.xrayImage = base64.split(',')[1]; // Remove data:image/...;base64, prefix
-        }
-        
-        // Add blood test params if available
-        Object.keys(bloodParams).forEach(key => {
-          if (bloodParams[key] !== '') {
-            combinedParams[key] = parseFloat(bloodParams[key]);
-          }
-        });
-        
-        // Add cough symptoms if available
-        Object.keys(coughSymptoms).forEach(key => {
-          if (coughSymptoms[key] !== '') {
-            combinedParams[key] = parseFloat(coughSymptoms[key]);
-          }
-        });
-        
-        // Check if at least one method is provided
-        const hasData = xrayFile || 
-                       Object.values(bloodParams).some(v => v !== '') || 
-                       Object.values(coughSymptoms).some(v => v !== '');
-        
-        if (!hasData) {
-          showToast('Please provide at least one type of data (X-ray, blood test, or symptoms)');
-          setRunning(false);
-          return;
-        }
-        
-        showToast('Running combined AI analysis with all available models...');
-        result = await predictCombined(combinedParams);
-        
-      } else if (selectedMode === 'xray') {
-        if (!xrayFile) {
-          showToast('Please upload a chest X-ray image');
-          setRunning(false);
-          return;
-        }
-        showToast('Analyzing chest X-ray...');
-        result = await predictFromXray(xrayFile);
-        
-      } else if (selectedMode === 'blood') {
-        const params = {};
-        Object.keys(bloodParams).forEach(key => {
-          if (bloodParams[key] !== '') {
-            params[key] = parseFloat(bloodParams[key]);
-          }
-        });
-        
-        if (Object.keys(params).length === 0) {
-          showToast('Please enter blood test parameters');
-          setRunning(false);
-          return;
-        }
-        
-        showToast('Processing blood test results...');
-        result = await predictFromBlood(params);
-        
-      } else if (selectedMode === 'cough') {
-        const symptoms = {};
-        Object.keys(coughSymptoms).forEach(key => {
-          if (coughSymptoms[key] !== '') {
-            symptoms[key] = parseFloat(coughSymptoms[key]);
-          }
-        });
-        
-        if (Object.keys(symptoms).length === 0) {
-          showToast('Please enter symptom details');
-          setRunning(false);
-          return;
-        }
-        
-        showToast('Analyzing cough symptoms...');
-        result = await predictFromCough(symptoms);
+      // Add X-ray if available
+      if (xrayFile) {
+        const base64 = await fileToBase64(xrayFile);
+        combinedParams.xrayImage = base64.split(',')[1]; // Remove data:image/...;base64, prefix
       }
+      
+      // Add blood test params if available
+      Object.keys(bloodParams).forEach(key => {
+        if (bloodParams[key] !== '') {
+          combinedParams[key] = parseFloat(bloodParams[key]);
+        }
+      });
+      
+      // Add cough symptoms if available
+      Object.keys(coughSymptoms).forEach(key => {
+        if (coughSymptoms[key] !== '') {
+          combinedParams[key] = parseFloat(coughSymptoms[key]);
+        }
+      });
+      
+      // Check if at least one method is provided
+      const hasData = xrayFile || 
+                     Object.values(bloodParams).some(v => v !== '') || 
+                     Object.values(coughSymptoms).some(v => v !== '');
+      
+      if (!hasData) {
+        showToast('Please provide at least one type of data (X-ray, blood test, or symptoms)');
+        setRunning(false);
+        return;
+      }
+      
+      showToast('Running combined AI analysis with all available models...');
+      const result = await predictCombined(combinedParams);
 
       // Store result in localStorage for ResultPage
       localStorage.setItem('predictionResult', JSON.stringify(result));
@@ -180,55 +132,13 @@ function PredictionPage() {
         </p>
       </motion.div>
 
-      {/* Mode Selection */}
-      <div className="grid gap-4 sm:grid-cols-4 mb-6">
-        <button
-          type="button"
-          className={`glass-card p-4 text-center transition-all ${
-            selectedMode === 'combined' ? 'ring-2 ring-brand-500 bg-brand-50 dark:bg-brand-900/20' : ''
-          }`}
-          onClick={() => setSelectedMode('combined')}
-        >
+      {/* Mode Selection - Only Combined AI */}
+      <div className="mb-6">
+        <div className="glass-card p-4 text-center ring-2 ring-brand-500 bg-brand-50 dark:bg-brand-900/20">
           <FlaskConical className="mx-auto mb-2 h-8 w-8" />
-          <h3 className="font-semibold">Combined AI</h3>
-          <p className="text-xs text-slate-500 mt-1">All 3 models (Best)</p>
-        </button>
-        
-        <button
-          type="button"
-          className={`glass-card p-4 text-center transition-all ${
-            selectedMode === 'xray' ? 'ring-2 ring-brand-500 bg-brand-50 dark:bg-brand-900/20' : ''
-          }`}
-          onClick={() => setSelectedMode('xray')}
-        >
-          <Upload className="mx-auto mb-2 h-8 w-8" />
-          <h3 className="font-semibold">X-ray Analysis</h3>
-          <p className="text-xs text-slate-500 mt-1">Upload chest X-ray image</p>
-        </button>
-        
-        <button
-          type="button"
-          className={`glass-card p-4 text-center transition-all ${
-            selectedMode === 'blood' ? 'ring-2 ring-brand-500 bg-brand-50 dark:bg-brand-900/20' : ''
-          }`}
-          onClick={() => setSelectedMode('blood')}
-        >
-          <FileText className="mx-auto mb-2 h-8 w-8" />
-          <h3 className="font-semibold">Blood Test</h3>
-          <p className="text-xs text-slate-500 mt-1">Enter blood parameters</p>
-        </button>
-        
-        <button
-          type="button"
-          className={`glass-card p-4 text-center transition-all ${
-            selectedMode === 'cough' ? 'ring-2 ring-brand-500 bg-brand-50 dark:bg-brand-900/20' : ''
-          }`}
-          onClick={() => setSelectedMode('cough')}
-        >
-          <Mic className="mx-auto mb-2 h-8 w-8" />
-          <h3 className="font-semibold">Cough Analysis</h3>
-          <p className="text-xs text-slate-500 mt-1">Describe your symptoms</p>
-        </button>
+          <h3 className="font-semibold text-lg">Combined AI Analysis</h3>
+          <p className="text-sm text-slate-500 mt-1">Uses all 3 models for maximum accuracy (X-ray + Blood + Cough)</p>
+        </div>
       </div>
 
       {/* Input Forms */}
@@ -390,9 +300,7 @@ function PredictionPage() {
           <FlaskConical size={16} /> AI Analysis Note
         </div>
         <p className="mt-1">
-          {selectedMode === 'combined' 
-            ? 'Combined prediction uses weighted ensemble of all available models for maximum accuracy (X-ray 40% + Blood 35% + Cough 25%).'
-            : 'Results are generated using machine learning models. Please consult a healthcare professional for proper diagnosis.'}
+          Combined prediction uses weighted ensemble of all available models for maximum accuracy (X-ray 40% + Blood 35% + Cough 25%). Results are generated using machine learning. Please consult a healthcare professional for proper diagnosis.
         </p>
       </div>
     </section>
