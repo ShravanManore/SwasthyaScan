@@ -45,10 +45,9 @@ function PredictionPage() {
     try {
       const combinedParams = {};
       
-      // Add X-ray if available
+      // Add X-ray file directly (not base64)
       if (xrayFile) {
-        const base64 = await fileToBase64(xrayFile);
-        combinedParams.xrayImage = base64.split(',')[1]; // Remove data:image/...;base64, prefix
+        combinedParams.xrayImage = xrayFile;
       }
       
       // Add blood test params if available
@@ -87,7 +86,10 @@ function PredictionPage() {
       
     } catch (error) {
       console.error('Prediction error:', error);
-      showToast(`Error: ${error.message}`);
+      const errorMessage = error.message && typeof error.message === 'object' 
+        ? JSON.stringify(error.message) 
+        : error.message || 'An unexpected error occurred';
+      showToast(`Error: ${errorMessage}`);
       setRunning(false);
     }
   };
@@ -112,15 +114,6 @@ function PredictionPage() {
   const handleCoughSymptomChange = (e) => {
     const { name, value } = e.target;
     setCoughSymptoms(prev => ({ ...prev, [name]: value }));
-  };
-
-  const fileToBase64 = (file) => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = () => resolve(reader.result);
-      reader.onerror = error => reject(error);
-    });
   };
 
   return (

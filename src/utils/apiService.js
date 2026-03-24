@@ -18,7 +18,8 @@ export async function predictFromXray(imageFile) {
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.detail || 'X-ray prediction failed');
+    const errorMessage = typeof error.detail === 'string' ? error.detail : JSON.stringify(error.detail);
+    throw new Error(errorMessage || 'X-ray prediction failed');
   }
 
   return await response.json();
@@ -44,7 +45,8 @@ export async function predictFromBlood(params) {
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.detail || 'Blood test prediction failed');
+    const errorMessage = typeof error.detail === 'string' ? error.detail : JSON.stringify(error.detail);
+    throw new Error(errorMessage || 'Blood test prediction failed');
   }
 
   return await response.json();
@@ -69,7 +71,8 @@ export async function predictFromCough(symptoms) {
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.detail || 'Cough prediction failed');
+    const errorMessage = typeof error.detail === 'string' ? error.detail : JSON.stringify(error.detail);
+    throw new Error(errorMessage || 'Cough prediction failed');
   }
 
   return await response.json();
@@ -81,8 +84,8 @@ export async function predictFromCough(symptoms) {
 export async function predictCombined(params) {
   const formData = new FormData();
   
-  // Append X-ray image if provided
-  if (params.xrayImage) {
+  // Append X-ray image if provided (as File/Blob, not base64 string)
+  if (params.xrayImage instanceof File || params.xrayImage instanceof Blob) {
     formData.append('xray_image', params.xrayImage);
   }
   
@@ -106,7 +109,8 @@ export async function predictCombined(params) {
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.detail || 'Combined prediction failed');
+    const errorMessage = typeof error.detail === 'string' ? error.detail : JSON.stringify(error.detail);
+    throw new Error(errorMessage || 'Combined prediction failed');
   }
 
   return await response.json();
