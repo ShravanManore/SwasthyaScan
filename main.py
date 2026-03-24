@@ -344,12 +344,12 @@ def get_combined_prediction(xray_result: dict | None, blood_result: dict | None,
     
     if blood_result and blood_result.get('success'):
         results.append(blood_result)
-        weights.append(0.33)  # Blood test (33%) - Balanced
+        weights.append(0.35)  # Blood test (35%)
         reference_results.append(blood_result)
     
     if cough_result and cough_result.get('success'):
         results.append(cough_result)
-        weights.append(0.33)  # Cough symptoms (33%) - Balanced
+        weights.append(0.65)  # Cough symptoms (65%) - Highest accuracy model
         reference_results.append(cough_result)
     
     if not results:
