@@ -46,8 +46,13 @@ function ResultPage() {
       {result.details && (
         <div className="glass-card mb-5 p-4">
           <p className="text-sm text-slate-600 dark:text-slate-300">
-            <span className="font-semibold">Analysis Method:</span> {result.details.model_type}
+            <span className="font-semibold">Analysis Method:</span> {result.details.methodology || result.details.model_type || 'AI Ensemble'}
           </p>
+          {result.details.models_used && (
+            <p className="text-xs text-slate-500 mt-1">
+              Models used: {result.details.models_used} | Agreement: {result.details.agreement_percentage}%
+            </p>
+          )}
         </div>
       )}
 
