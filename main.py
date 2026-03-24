@@ -156,11 +156,18 @@ def get_xray_prediction(image_bytes: bytes) -> dict:
         
         # Predict
         predictions = xray_model.predict(img_array, verbose=0)
+        
+        if predictions is None or len(predictions) == 0:
+            raise ValueError("X-ray model returned no predictions")
+            
         confidence = float(np.max(predictions)) * 100
         predicted_class = int(np.argmax(predictions))
         
         print(f"📊 Prediction: class={predicted_class}, confidence={confidence:.2f}%")
-        print(f"   Raw predictions: {predictions[0]}")
+        
+        # Safe access to sub-elements
+        raw_probs = predictions[0] if len(predictions) > 0 else [0.5, 0.5]
+        print(f"   Raw predictions: {raw_probs}")
         
         # Map to class name
         class_names = {v: k for k, v in class_indices.items()}
@@ -175,11 +182,11 @@ def get_xray_prediction(image_bytes: bytes) -> dict:
         
         return {
             "prediction": prediction_name,
-            "confidence": round(confidence, 2),
+            "confidence": round(float(confidence), 2),
             "risk_level": risk_level,
             "is_tb": is_tb,
             "success": True,
-            "probabilities": predictions[0].tolist() # [Normal, TB]
+            "probabilities": raw_probs.tolist() if hasattr(raw_probs, 'tolist') else list(raw_probs)
         }
     except Exception as e:
         print(f"✗ X-ray prediction error: {e}")
@@ -190,26 +197,39 @@ def get_xray_prediction(image_bytes: bytes) -> dict:
 
 def get_blood_test_prediction(data: dict) -> dict:
     """Predict TB from blood test parameters"""
-    if blood_model is None:
-        raise HTTPException(status_code=503, detail="Blood test model not available")
+    if blood_model is None or blood_scaler is None or blood_encoder is None:
+        return {
+            "success": False,
+            "error": "Blood test model or components not available",
+            "is_tb": False,
+            "confidence": 0
+        }
     
     # Prepare input data in correct order (WBC_Count, Hemoglobin, ESR, CRP)
     input_data = np.array([[
-        data.get('WBC_Count', 0),
-        data.get('Hemoglobin', 0),
-        data.get('ESR', 0),
-        data.get('CRP', 0)
+        float(data.get('WBC_Count', 0)),
+        float(data.get('Hemoglobin', 0)),
+        float(data.get('ESR', 0)),
+        float(data.get('CRP', 0))
     ]])
     
     # Scale
     input_scaled = blood_scaler.transform(input_data)
     
     # Predict
-    prediction_encoded = blood_model.predict(input_scaled)[0]
+    preds = blood_model.predict(input_scaled)
+    if len(preds) == 0:
+        raise ValueError("Blood model returned no predictions")
+        
+    prediction_encoded = preds[0]
     prediction = blood_encoder.inverse_transform([prediction_encoded])[0]
     
     # Get probabilities
-    probs = blood_model.predict_proba(input_scaled)[0]
+    probs_list = blood_model.predict_proba(input_scaled)
+    if len(probs_list) == 0:
+        raise ValueError("Blood model returned no probabilities")
+        
+    probs = probs_list[0]
     confidence = float(np.max(probs)) * 100
     
     is_tb = prediction == 1 or (isinstance(prediction, str) and "TB" in prediction.upper())
@@ -221,19 +241,24 @@ def get_blood_test_prediction(data: dict) -> dict:
         "risk_level": risk_level,
         "is_tb": is_tb,
         "success": True,
-        "probabilities": probs.tolist() # [Negative, Positive]
+        "probabilities": probs.tolist() if hasattr(probs, 'tolist') else list(probs)
     }
 
 
 def get_cough_prediction(data: dict) -> dict:
     """Predict TB from cough sound features"""
-    if cough_model is None:
-        raise HTTPException(status_code=503, detail="Cough model not available")
+    if cough_model is None or cough_scaler is None:
+        return {
+            "success": False,
+            "error": "Cough model or components not available",
+            "is_tb": False,
+            "confidence": 0
+        }
     
     # Prepare input data in correct feature order
     input_values = []
     for feature in cough_features:
-        value = data.get(feature, 0)
+        value = float(data.get(feature, 0))
         input_values.append(value)
     
     input_data = np.array([input_values])
@@ -242,10 +267,18 @@ def get_cough_prediction(data: dict) -> dict:
     input_scaled = cough_scaler.transform(input_data)
     
     # Predict
-    prediction = int(cough_model.predict(input_scaled)[0])
+    preds = cough_model.predict(input_scaled)
+    if len(preds) == 0:
+        raise ValueError("Cough model returned no predictions")
+        
+    prediction = int(preds[0])
     
     # Get probabilities
-    probs = cough_model.predict_proba(input_scaled)[0]
+    probs_list = cough_model.predict_proba(input_scaled)
+    if len(probs_list) == 0:
+        raise ValueError("Cough model returned no probabilities")
+        
+    probs = probs_list[0]
     confidence = float(np.max(probs)) * 100
     
     is_tb = prediction == 1
@@ -257,7 +290,7 @@ def get_cough_prediction(data: dict) -> dict:
         "risk_level": risk_level,
         "is_tb": is_tb,
         "success": True,
-        "probabilities": probs.tolist() # [Negative, Positive]
+        "probabilities": probs.tolist() if hasattr(probs, 'tolist') else list(probs)
     }
 
 
@@ -324,6 +357,11 @@ def get_combined_prediction(xray_result: dict | None, blood_result: dict | None,
             "error": "No valid predictions to combine"
         }
     
+    # Normalize weights so they sum to 1.0
+    total_weight = sum(weights)
+    if total_weight > 0:
+        weights = [w / total_weight for w in weights]
+    
     # SOFT VOTING ENSEMBLE
     # ---------------------
     # Calculate weighted mean probabilities
@@ -361,7 +399,9 @@ def get_combined_prediction(xray_result: dict | None, blood_result: dict | None,
     agreement_percentage = (agreement_count / len(results)) * 100 if results else 0
     
     # Determine risk level with high sensitivity
+    prediction_text = "No TB Detected"
     if final_is_tb:
+        prediction_text = "TB Detected"
         if final_p1 > 0.7 or agreement_percentage >= 67:
             risk_level = "High Risk"
         else:
@@ -393,11 +433,11 @@ def get_combined_prediction(xray_result: dict | None, blood_result: dict | None,
     return {
         "success": True,
         "prediction": prediction_text,
-        "confidence": round(final_confidence, 2),
+        "confidence": round(float(final_confidence), 2),
         "risk_level": risk_level,
         "is_tb": final_is_tb,
         "models_used": len(results),
-        "agreement_percentage": round(agreement_percentage, 2),
+        "agreement_percentage": round(float(agreement_percentage), 2),
         "individual_results": results,
         "methodology": methodology_text
     }
