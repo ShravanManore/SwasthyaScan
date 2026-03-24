@@ -45,7 +45,7 @@ function PredictionPage() {
     try {
       const combinedParams = {};
       
-      // Add X-ray file directly (not base64)
+      // Add X-ray file directly (File object)
       if (xrayFile) {
         combinedParams.xrayImage = xrayFile;
       }
@@ -114,6 +114,15 @@ function PredictionPage() {
   const handleCoughSymptomChange = (e) => {
     const { name, value } = e.target;
     setCoughSymptoms(prev => ({ ...prev, [name]: value }));
+  };
+
+  const fileToBase64 = (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = error => reject(error);
+    });
   };
 
   return (

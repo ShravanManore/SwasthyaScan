@@ -471,11 +471,21 @@ async def predict_cough(
 
 @app.post("/predict/combined", response_model=PredictionResponse)
 async def predict_combined(
-    request: CombinedPredictionRequest
+    xray_image: UploadFile = File(None),
+    wbc_count: float = Form(None),
+    hemoglobin: float = Form(None),
+    esr: float = Form(None),
+    crp: float = Form(None),
+    cough_severity: float = Form(None),
+    cough_duration: float = Form(None),
+    chest_pain: float = Form(None),
+    breathlessness: float = Form(None),
+    fever: float = Form(None),
 ):
     """
     Combined prediction using all three models for improved accuracy
     Uses weighted ensemble voting to combine predictions
+    Accepts multipart/form-data for mixed file + data upload
     """
     try:
         xray_result = None
@@ -483,37 +493,36 @@ async def predict_combined(
         cough_result = None
         
         # Get X-ray prediction if image provided
-        if request.xray_image and xray_model is not None:
+        if xray_image and xray_model is not None:
             try:
-                import base64
-                image_data = base64.b64decode(request.xray_image)
-                xray_result = get_xray_prediction(image_data)
+                contents = await xray_image.read()
+                xray_result = get_xray_prediction(contents)
             except Exception as e:
                 print(f"X-ray prediction failed: {e}")
         
         # Get blood test prediction if parameters provided
-        if all([request.wbc_count is not None, request.hemoglobin is not None, 
-                request.esr is not None, request.crp is not None]):
+        if all([wbc_count is not None, hemoglobin is not None, 
+                esr is not None, crp is not None]):
             try:
                 blood_data = {
-                    "WBC_Count": request.wbc_count,
-                    "Hemoglobin": request.hemoglobin,
-                    "ESR": request.esr,
-                    "CRP": request.crp
+                    "WBC_Count": wbc_count,
+                    "Hemoglobin": hemoglobin,
+                    "ESR": esr,
+                    "CRP": crp
                 }
                 blood_result = get_blood_test_prediction(blood_data)
             except Exception as e:
                 print(f"Blood test prediction failed: {e}")
         
         # Get cough prediction if symptoms provided
-        if all([request.cough_severity is not None, request.cough_duration is not None]):
+        if all([cough_severity is not None, cough_duration is not None]):
             try:
                 cough_data = {
-                    "Cough_Severity": request.cough_severity,
-                    "Cough_Duration": request.cough_duration,
-                    "Chest_Pain": request.chest_pain or 0,
-                    "Breathlessness": request.breathlessness or 0,
-                    "Fever": request.fever or 0
+                    "Cough_Severity": cough_severity,
+                    "Cough_Duration": cough_duration,
+                    "Chest_Pain": chest_pain or 0,
+                    "Breathlessness": breathlessness or 0,
+                    "Fever": fever or 0
                 }
                 cough_result = get_cough_prediction(cough_data)
             except Exception as e:

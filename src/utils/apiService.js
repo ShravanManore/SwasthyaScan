@@ -84,7 +84,7 @@ export async function predictFromCough(symptoms) {
 export async function predictCombined(params) {
   const formData = new FormData();
   
-  // Append X-ray image if provided (as File/Blob, not base64 string)
+  // Append X-ray image if provided (as File object)
   if (params.xrayImage instanceof File || params.xrayImage instanceof Blob) {
     formData.append('xray_image', params.xrayImage);
   }
