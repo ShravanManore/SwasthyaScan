@@ -266,18 +266,18 @@ def get_combined_prediction(xray_result: dict | None, blood_result: dict | None,
     weights = []
     
     # Assign weights based on model reliability
-    # You can adjust these based on your validation results
+    # Adjusted: Blood test most reliable, X-ray reduced due to accuracy issues
     if xray_result and xray_result.get('success'):
         results.append(xray_result)
-        weights.append(0.4)  # X-ray typically most reliable (40%)
+        weights.append(0.25)  # X-ray (25%) - Reduced from 40%
     
     if blood_result and blood_result.get('success'):
         results.append(blood_result)
-        weights.append(0.35)  # Blood test (35%)
+        weights.append(0.45)  # Blood test (45%) - Increased for better accuracy
     
     if cough_result and cough_result.get('success'):
         results.append(cough_result)
-        weights.append(0.25)  # Cough symptoms (25%)
+        weights.append(0.30)  # Cough symptoms (30%) - Slightly increased
     
     if not results:
         return {
@@ -328,7 +328,7 @@ def get_combined_prediction(xray_result: dict | None, blood_result: dict | None,
         "models_used": len(results),
         "agreement_percentage": round(agreement_percentage, 2),
         "individual_results": results,
-        "methodology": "Weighted ensemble voting (X-ray: 40%, Blood: 35%, Cough: 25%)"
+        "methodology": "Weighted ensemble voting (X-ray: 25%, Blood: 45%, Cough: 30%)"
     }
 
 
@@ -356,7 +356,7 @@ def root():
         ],
         "features": {
             "individual_predictions": "Use single model",
-            "combined_prediction": "Uses weighted ensemble of all available models (40% X-ray + 35% Blood + 25% Cough)"
+            "combined_prediction": "Uses weighted ensemble of all available models (25% X-ray + 45% Blood + 30% Cough)"
         }
     }
 
