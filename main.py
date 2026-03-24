@@ -337,19 +337,20 @@ def get_combined_prediction(xray_result: dict | None, blood_result: dict | None,
     results = []
     weights = []
     
-    # Assign weights based on model reliability
-    # Adjusted: Equal weights for all models to test accuracy
+    # X-ray is for reference only, not used in the ensemble score as per user request
+    reference_results = []
     if xray_result and xray_result.get('success'):
-        results.append(xray_result)
-        weights.append(0.34)  # X-ray (34%) - Balanced weight
+        reference_results.append({**xray_result, "note": "Reference only"})
     
     if blood_result and blood_result.get('success'):
         results.append(blood_result)
         weights.append(0.33)  # Blood test (33%) - Balanced
+        reference_results.append(blood_result)
     
     if cough_result and cough_result.get('success'):
         results.append(cough_result)
         weights.append(0.33)  # Cough symptoms (33%) - Balanced
+        reference_results.append(cough_result)
     
     if not results:
         return {
@@ -421,7 +422,6 @@ def get_combined_prediction(xray_result: dict | None, blood_result: dict | None,
     model_names = []
     
     # Re-identify which models were actually used to label weights correctly
-    if xray_result and xray_result.get('success'): model_names.append("X-ray")
     if blood_result and blood_result.get('success'): model_names.append("Blood")
     if cough_result and cough_result.get('success'): model_names.append("Cough")
     
@@ -438,7 +438,7 @@ def get_combined_prediction(xray_result: dict | None, blood_result: dict | None,
         "is_tb": final_is_tb,
         "models_used": len(results),
         "agreement_percentage": round(float(agreement_percentage), 2),
-        "individual_results": results,
+        "individual_results": reference_results,
         "methodology": methodology_text
     }
 
