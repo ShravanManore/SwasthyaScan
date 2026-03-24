@@ -21,9 +21,9 @@ def check_dependencies():
         print("   Run: pip install -r requirements.txt")
         return False
     
-    # Check Node.js
+    # Check Node.js and npm using shell=True for better PATH resolution
     try:
-        result = subprocess.run(["node", "--version"], capture_output=True, text=True)
+        result = subprocess.run(["node", "--version"], capture_output=True, text=True, shell=True)
         if result.returncode == 0:
             print(f"✅ Node.js found: {result.stdout.strip()}")
         else:
@@ -33,9 +33,8 @@ def check_dependencies():
         print("   Please install Node.js from https://nodejs.org/")
         return False
     
-    # Check npm
     try:
-        result = subprocess.run(["npm", "--version"], capture_output=True, text=True)
+        result = subprocess.run(["npm", "--version"], capture_output=True, text=True, shell=True)
         if result.returncode == 0:
             print(f"✅ npm found: {result.stdout.strip()}")
         else:
@@ -49,7 +48,7 @@ def check_dependencies():
     if not os.path.exists("node_modules"):
         print("⚠️  node_modules not found. Installing...")
         try:
-            subprocess.run(["npm", "install"], check=True)
+            subprocess.run(["npm", "install"], check=True, shell=True)
             print("✅ Frontend dependencies installed")
         except Exception as e:
             print(f"❌ Failed to install dependencies: {e}")
@@ -84,38 +83,13 @@ def start_servers():
     # Start Vite frontend
     print("🎨 Starting Vite frontend on http://localhost:5173")
     
-    # Try different ways to run npm on Windows
-    try:
-        # Try using npm.cmd on Windows
-        if os.name == 'nt':
-            frontend_process = subprocess.Popen(
-                ["npm.cmd", "run", "dev"],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT
-            )
-        else:
-            frontend_process = subprocess.Popen(
-                ["npm", "run", "dev"],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT
-            )
-    except FileNotFoundError:
-        # If npm.cmd fails, try full path or npx
-        print("⚠️  Trying alternative npm command...")
-        try:
-            frontend_process = subprocess.Popen(
-                ["npx", "vite"],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT
-            )
-        except FileNotFoundError:
-            print("❌ Could not find npm or npx. Please install Node.js properly.")
-            print("\nManual start instructions:")
-            print("1. Open a new terminal")
-            print("2. Navigate to project folder")
-            print("3. Run: npm run dev")
-            backend_process.terminate()
-            return
+    # Use shell=True for better PATH resolution on Windows
+    frontend_process = subprocess.Popen(
+        ["npm", "run", "dev"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        shell=True
+    )
     
     print("=" * 50)
     print("✅ Both servers started successfully!")
