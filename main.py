@@ -131,32 +131,46 @@ def get_xray_prediction(image_bytes: bytes) -> dict:
             "confidence": 0
         }
     
-    # Load and preprocess image
-    image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-    image = image.resize((224, 224))  # Adjust size based on your model
-    img_array = tf.keras.preprocessing.image.img_to_array(image)
-    img_array = tf.expand_dims(img_array, 0) / 255.0  # Normalize
-    
-    # Predict
-    predictions = xray_model.predict(img_array, verbose=0)
-    confidence = float(np.max(predictions)) * 100
-    predicted_class = int(np.argmax(predictions))
-    
-    # Map to class name
-    class_names = {v: k for k, v in class_indices.items()}
-    prediction_name = class_names.get(predicted_class, "Unknown")
-    
-    # Determine risk level
-    is_tb = predicted_class == 1 or "TB" in prediction_name.upper()
-    risk_level = "High Risk" if is_tb else "Low Risk"
-    
-    return {
-        "prediction": prediction_name,
-        "confidence": round(confidence, 2),
-        "risk_level": risk_level,
-        "is_tb": is_tb,
-        "success": True
-    }
+    try:
+        # Load and preprocess image
+        image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        print(f"✓ Image loaded: {image.size}, mode: {image.mode}")
+        
+        image = image.resize((224, 224))
+        img_array = tf.keras.preprocessing.image.img_to_array(image)
+        img_array = tf.expand_dims(img_array, 0) / 255.0  # Normalize
+        
+        # Predict
+        predictions = xray_model.predict(img_array, verbose=0)
+        confidence = float(np.max(predictions)) * 100
+        predicted_class = int(np.argmax(predictions))
+        
+        print(f"📊 Prediction: class={predicted_class}, confidence={confidence:.2f}%")
+        print(f"   Raw predictions: {predictions[0]}")
+        
+        # Map to class name
+        class_names = {v: k for k, v in class_indices.items()}
+        prediction_name = class_names.get(predicted_class, "Unknown")
+        print(f"   Class name: {prediction_name}")
+        
+        # Determine risk level - class 1 is TB, class 0 is Normal
+        is_tb = (predicted_class == 1)
+        risk_level = "High Risk" if is_tb else "Low Risk"
+        
+        print(f"   Result: is_tb={is_tb}, risk_level={risk_level}")
+        
+        return {
+            "prediction": prediction_name,
+            "confidence": round(confidence, 2),
+            "risk_level": risk_level,
+            "is_tb": is_tb,
+            "success": True
+        }
+    except Exception as e:
+        print(f"✗ X-ray prediction error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
 
 
 def get_blood_test_prediction(data: dict) -> dict:
@@ -266,18 +280,18 @@ def get_combined_prediction(xray_result: dict | None, blood_result: dict | None,
     weights = []
     
     # Assign weights based on model reliability
-    # Adjusted: Blood test most reliable, X-ray reduced due to accuracy issues
+    # Adjusted: Equal weights for all models to test accuracy
     if xray_result and xray_result.get('success'):
         results.append(xray_result)
-        weights.append(0.25)  # X-ray (25%) - Reduced from 40%
+        weights.append(0.34)  # X-ray (34%) - Balanced weight
     
     if blood_result and blood_result.get('success'):
         results.append(blood_result)
-        weights.append(0.45)  # Blood test (45%) - Increased for better accuracy
+        weights.append(0.33)  # Blood test (33%) - Balanced
     
     if cough_result and cough_result.get('success'):
         results.append(cough_result)
-        weights.append(0.30)  # Cough symptoms (30%) - Slightly increased
+        weights.append(0.33)  # Cough symptoms (33%) - Balanced
     
     if not results:
         return {
@@ -328,7 +342,7 @@ def get_combined_prediction(xray_result: dict | None, blood_result: dict | None,
         "models_used": len(results),
         "agreement_percentage": round(agreement_percentage, 2),
         "individual_results": results,
-        "methodology": "Weighted ensemble voting (X-ray: 25%, Blood: 45%, Cough: 30%)"
+        "methodology": "Weighted ensemble voting (X-ray: 34%, Blood: 33%, Cough: 33%)"
     }
 
 
@@ -356,7 +370,7 @@ def root():
         ],
         "features": {
             "individual_predictions": "Use single model",
-            "combined_prediction": "Uses weighted ensemble of all available models (25% X-ray + 45% Blood + 30% Cough)"
+            "combined_prediction": "Uses weighted ensemble of all available models (34% X-ray + 33% Blood + 33% Cough)"
         }
     }
 
