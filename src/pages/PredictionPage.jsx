@@ -147,7 +147,7 @@ function PredictionPage() {
       <div className="glass-card mb-5 p-5">
         {/* X-ray Upload Section */}
         <div className="mb-6">
-          <label className="block text-sm font-medium mb-2">Upload Chest X-ray Image (Optional)</label>
+          <label className="block text-sm font-medium mb-2">Upload Chest X-ray Image </label>
           <input
             type="file"
             accept="image/*"
@@ -163,7 +163,7 @@ function PredictionPage() {
 
         {/* Blood Test Section */}
         <div className="mb-6">
-          <h3 className="text-lg font-semibold mb-3">Blood Test Parameters (Optional)</h3>
+          <h3 className="text-lg font-semibold mb-3">Blood Test Parameters </h3>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label className="block text-sm font-medium mb-1">WBC Count (cells/μL)</label>
@@ -218,7 +218,7 @@ function PredictionPage() {
 
         {/* Cough Symptoms Section */}
         <div>
-          <h3 className="text-lg font-semibold mb-3">Cough Symptoms (Optional)</h3>
+          <h3 className="text-lg font-semibold mb-3">Cough Symptoms </h3>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label className="block text-sm font-medium mb-1">Cough Severity (0-10)</label>
