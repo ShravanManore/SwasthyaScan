@@ -2,7 +2,7 @@ services:
   - type: web
     name: swasthyascan-backend
     env: python
-    buildCommand: pip install -r requirements.txt
+    buildCommand: python -m pip install --upgrade pip && pip install -r requirements.txt
     startCommand: gunicorn -w 1 -k uvicorn.workers.UvicornWorker main:app
     envVars:
       - key: PYTHON_VERSION
