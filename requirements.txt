@@ -11,3 +11,4 @@ pytesseract==0.3.10
 opencv-python==4.9.0.80
 httpx==0.26.0
 lightgbm>=4.0.0
+gunicorn==21.2.0
