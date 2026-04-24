@@ -1,0 +1,13 @@
+# Ignore backend files on Vercel
+requirements.txt
+main.py
+app.py
+*.pkl
+*.h5
+render.yaml
+setup.py
+start.py
+test_models.py
+verify_robustness.py
+python_scripts/
+backend/
